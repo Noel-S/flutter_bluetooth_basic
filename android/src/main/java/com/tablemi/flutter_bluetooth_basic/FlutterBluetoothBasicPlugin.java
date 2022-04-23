@@ -14,6 +14,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.util.Log;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
@@ -39,6 +40,9 @@ public class FlutterBluetoothBasicPlugin implements MethodCallHandler, RequestPe
   private int id = 0;
   private ThreadPool threadPool;
   private static final int REQUEST_COARSE_LOCATION_PERMISSIONS = 1451;
+  private static final int REQUEST_BLUETOOTH_SCAN_PERMISSIONS = 7212;
+  private static final int REQUEST_BLUETOOTH_CONNECT_PERMISSIONS = 2317;
+
   private static final String NAMESPACE = "flutter_bluetooth_basic";
   private final Registrar registrar;
   private final Activity activity;
@@ -89,14 +93,30 @@ public class FlutterBluetoothBasicPlugin implements MethodCallHandler, RequestPe
         result.success(threadPool != null);
         break;
       case "startScan": {
-        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_COARSE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
+        boolean allGranted = true;
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.S) {
+          if (ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_SCAN) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                    activity,
+                    new String[] {Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADMIN},
+                    REQUEST_BLUETOOTH_SCAN_PERMISSIONS
+            );
+            pendingCall = call;
+            pendingResult = result;
+            allGranted = false;
+          }
+        }
+        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(activity, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
           ActivityCompat.requestPermissions(
-                  activity,
-                  new String[] {Manifest.permission.ACCESS_COARSE_LOCATION},
-                  REQUEST_COARSE_LOCATION_PERMISSIONS);
+            activity,
+            new String[] {Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION},
+            REQUEST_COARSE_LOCATION_PERMISSIONS
+          );
           pendingCall = call;
           pendingResult = result;
+          allGranted = false;
+        }
+        if(!allGranted) {
           break;
         }
         startScan(call, result);
@@ -107,6 +127,18 @@ public class FlutterBluetoothBasicPlugin implements MethodCallHandler, RequestPe
         result.success(null);
         break;
       case "connect":
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.S) {
+          if (ContextCompat.checkSelfPermission(activity, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(
+                    activity,
+                    new String[] {Manifest.permission.BLUETOOTH_CONNECT},
+                    REQUEST_BLUETOOTH_CONNECT_PERMISSIONS
+            );
+            pendingCall = call;
+            pendingResult = result;
+            break;
+          }
+        }
         connect(result, args);
         break;
       case "disconnect":
@@ -294,6 +326,23 @@ public class FlutterBluetoothBasicPlugin implements MethodCallHandler, RequestPe
         startScan(pendingCall, pendingResult);
       } else {
         pendingResult.error("no_permissions", "This app requires location permissions for scanning", null);
+        pendingResult = null;
+      }
+      return true;
+    } else if (requestCode == REQUEST_BLUETOOTH_SCAN_PERMISSIONS) {
+      if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        startScan(pendingCall, pendingResult);
+      } else {
+        pendingResult.error("no_permissions", "This app requires bluetooth scan permissions for scanning", null);
+        pendingResult = null;
+      }
+      return true;
+    } else if (requestCode == REQUEST_BLUETOOTH_CONNECT_PERMISSIONS) {
+      if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+        final Map<String, Object> args = pendingCall.arguments();
+        connect(pendingResult, args);
+      } else {
+        pendingResult.error("no_permissions", "This app requires bluetooth scan permissions for scanning", null);
         pendingResult = null;
       }
       return true;
